@@ -62,6 +62,9 @@ class APIConfig:
                 "API_BASE_URL, API_KEY, MODEL_NAME"
             )
         
+        # 类型检查：已验证不为 None
+        assert base_url is not None and api_key is not None and model_name is not None
+        
         return cls(
             base_url=base_url,
             api_key=api_key,
