@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://example.com/toc_entry.schema.json",
+  "title": "TOC Entry",
+  "description": "单个目录项的数据结构定义",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "目录项标题（章节名称）",
+      "minLength": 1,
+      "maxLength": 500,
+      "examples": [
+        "第一章 绪论",
+        "1.1 研究背景",
+        "1.1.1 国内研究现状"
+      ]
+    },
+    "page": {
+      "type": "integer",
+      "description": "书籍中标注的页码（OCR 识别的原始页码，未加偏置）",
+      "minimum": 1,
+      "examples": [1, 15, 203]
+    },
+    "level": {
+      "type": "integer",
+      "description": "目录层级：1=章（一级标题）、2=节（二级标题）、3=小节（三级标题），以此类推",
+      "minimum": 1,
+      "maximum": 5,
+      "examples": [1, 2, 3]
+    }
+  },
+  "required": ["title", "page", "level"],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "title": "第一章 绪论",
+      "page": 1,
+      "level": 1
+    },
+    {
+      "title": "1.1 研究背景",
+      "page": 3,
+      "level": 2
+    },
+    {
+      "title": "1.1.1 国内研究现状",
+      "page": 5,
+      "level": 3
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://example.com/toc_page.schema.json",
+  "title": "TOC Page",
+  "description": "单页目录的数据结构定义（OCR 识别单页后的输出）",
+  "type": "array",
+  "items": {
+    "$ref": "toc_entry.schema.json"
+  },
+  "minItems": 0,
+  "maxItems": 100,
+  "description": "一页目录中包含的所有目录项数组，通常一页包含 5-20 个条目",
+  "examples": [
+    [
+      {
+        "title": "第一章 绪论",
+        "page": 1,
+        "level": 1
+      },
+      {
+        "title": "1.1 研究背景",
+        "page": 3,
+        "level": 2
+      },
+      {
+        "title": "1.1.1 国内研究现状",
+        "page": 5,
+        "level": 3
+      },
+      {
+        "title": "1.1.2 国外研究现状",
+        "page": 8,
+        "level": 3
+      },
+      {
+        "title": "1.2 研究意义",
+        "page": 12,
+        "level": 2
+      }
+    ]
+  ]
+}

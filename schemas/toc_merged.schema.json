@@ -1,0 +1,101 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://example.com/toc_merged.schema.json",
+  "title": "Merged TOC",
+  "description": "合并后的完整目录数据结构（包含元数据和所有目录项）",
+  "type": "object",
+  "properties": {
+    "metadata": {
+      "type": "object",
+      "description": "目录文件的元数据信息",
+      "properties": {
+        "pdf_path": {
+          "type": "string",
+          "description": "原始 PDF 文件的路径",
+          "examples": ["/path/to/book.pdf"]
+        },
+        "page_offset": {
+          "type": "integer",
+          "description": "页码偏置值（书籍第1页对应PDF的第几页）",
+          "minimum": 1,
+          "examples": [15, 10, 20]
+        },
+        "toc_page_range": {
+          "type": "string",
+          "description": "目录在 PDF 中的页码范围",
+          "pattern": "^\\d+-\\d+$",
+          "examples": ["5-12", "7-10"]
+        },
+        "total_entries": {
+          "type": "integer",
+          "description": "识别到的目录项总数",
+          "minimum": 0,
+          "examples": [45, 120, 88]
+        },
+        "generated_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "目录生成的时间戳（ISO 8601 格式）",
+          "examples": ["2026-01-04T10:30:00Z"]
+        },
+        "model_name": {
+          "type": "string",
+          "description": "使用的 AI 模型名称",
+          "examples": ["anthropic/claude-3.5-sonnet", "openai/gpt-4-vision"]
+        }
+      },
+      "required": ["pdf_path", "page_offset", "total_entries", "generated_at"],
+      "additionalProperties": true
+    },
+    "toc": {
+      "type": "array",
+      "description": "完整的目录项列表（按书籍顺序排列）",
+      "items": {
+        "$ref": "toc_entry.schema.json"
+      },
+      "minItems": 1,
+      "maxItems": 1000
+    }
+  },
+  "required": ["metadata", "toc"],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "metadata": {
+        "pdf_path": "/Users/john/Documents/machine_learning.pdf",
+        "page_offset": 15,
+        "toc_page_range": "7-10",
+        "total_entries": 45,
+        "generated_at": "2026-01-04T10:30:00Z",
+        "model_name": "anthropic/claude-3.5-sonnet"
+      },
+      "toc": [
+        {
+          "title": "第一章 绪论",
+          "page": 1,
+          "level": 1
+        },
+        {
+          "title": "1.1 研究背景",
+          "page": 3,
+          "level": 2
+        },
+        {
+          "title": "1.1.1 国内研究现状",
+          "page": 5,
+          "level": 3
+        },
+        {
+          "title": "1.2 研究意义",
+          "page": 12,
+          "level": 2
+        },
+        {
+          "title": "第二章 相关理论",
+          "page": 18,
+          "level": 1
+        }
+      ]
+    }
+  ]
+}
