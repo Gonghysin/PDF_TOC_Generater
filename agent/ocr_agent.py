@@ -48,12 +48,11 @@ class LLMClient:
         
         self.model = ChatOpenAI(
             base_url=config.api.base_url,
-            api_key=config.api.api_key,
+            api_key=config.api.api_key,  # type: ignore
             model=config.api.model_name,
             temperature=config.api.temperature,
-            max_tokens=config.api.max_tokens,
             timeout=config.api.timeout,
-            http_client=http_client
+            http_client=http_client  # type: ignore
         )
         
         self.config = config.api
@@ -101,7 +100,8 @@ class LLMClient:
         
         # 调用模型
         response = self.model.invoke([message])
-        return response.content
+        content = response.content
+        return content if isinstance(content, str) else str(content)
     
     def extract_text(self, image_path: str, prompt: str) -> str:
         """
@@ -131,7 +131,7 @@ class LLMClient:
         
         message = HumanMessage(content=prompt)
         response = self.model.invoke([message])
-        return response.content
+        return str(response.content)
 
 
 def get_llm_client() -> LLMClient:
@@ -202,17 +202,20 @@ class OCRAgent:
         if retry:
             result = self._process_with_retry(initial_state)
         else:
-            result = self.workflow.invoke(initial_state)
+            workflow_app = self.workflow.compile()
+            result = workflow_app.invoke(initial_state)  # type: ignore
         
         elapsed_time = time.time() - start_time
         result['metadata']['elapsed_time'] = elapsed_time
         
+        structured_data = result.get('structured_data', [])
+        data_count = len(structured_data) if structured_data else 0
         logger.info(
             f"处理完成 - 耗时: {elapsed_time:.2f}s, "
-            f"识别: {len(result.get('structured_data', []))} 个条目"
+            f"识别: {data_count} 个条目"
         )
         
-        return result
+        return result  # type: ignore
     
     def _process_with_retry(self, initial_state: OCRState) -> OCRState:
         """
@@ -226,10 +229,12 @@ class OCRAgent:
         """
         max_retries = self.config.max_retries
         retry_delay = self.config.retry_delay
+        workflow_app = self.workflow.compile()
+        result: OCRState = initial_state  # 初始化
         
         for attempt in range(max_retries):
             try:
-                result = self.workflow.invoke(initial_state)
+                result = workflow_app.invoke(initial_state)  # type: ignore
                 
                 # 检查是否成功
                 if (result.get('structured_data') and 
@@ -351,7 +356,14 @@ def process_all_images(
     agent = OCRAgent()
     
     if parallel:
-        return _process_images_parallel(agent, image_paths, start_page_number)
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(
+                _process_images_parallel(agent, image_paths, start_page_number)
+            )
+        finally:
+            loop.close()
     else:
         return _process_images_sequential(agent, image_paths, start_page_number)
 
