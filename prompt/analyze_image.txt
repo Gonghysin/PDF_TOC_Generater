@@ -1,0 +1,27 @@
+分析这张目录页图片的质量和布局。
+
+**分析项**：
+1. quality: clear(清晰)/blurry(模糊)/poor(严重失真)
+2. layout: single_column(单栏)/two_column(双栏)/multi_column(多栏)
+3. has_header: 是否有页眉（true/false）
+4. has_footer: 是否有页脚（true/false）
+5. has_decorations: 是否有装饰元素（true/false）
+6. text_orientation: horizontal(横排)/vertical(竖排)
+7. font_size_variance: high(高)/medium(中)/low(低)
+8. indentation_present: 是否有缩进（true/false）
+9. estimated_entries: 预估条目数（整数）
+10. notes: 简短备注（一句话）
+
+**输出格式**（必须严格遵守）：
+```json
+{"quality":"clear","layout":"single_column","has_header":true,"has_footer":false,"has_decorations":false,"text_orientation":"horizontal","font_size_variance":"medium","indentation_present":true,"estimated_entries":15,"notes":"清晰的单栏目录页"}
+```
+
+**关键要求**：
+- 以 { 开头，以 } 结尾
+- 所有键和字符串值用双引号包裹
+- 布尔值用 true/false（小写，无引号）
+- 紧凑格式，不要换行（节省 token）
+- 只输出 JSON，不要任何其他文字
+
+现在输出 JSON：

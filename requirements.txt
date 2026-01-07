@@ -1,0 +1,8 @@
+PyMuPDF>=1.23.0
+Pillow>=10.0.0
+python-dotenv>=1.0.0
+langchain>=0.1.0
+langgraph>=0.0.20
+langchain-openai>=0.0.2
+jsonschema>=4.20.0
+requests>=2.31.0
