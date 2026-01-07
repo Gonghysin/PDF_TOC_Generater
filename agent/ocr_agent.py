@@ -37,14 +37,16 @@ class LLMClient:
         """初始化 LLM 客户端"""
         config = get_config()
         
-        # 配置代理
-        http_client = None
+        # httpx 会自动读取环境变量 HTTP_PROXY 和 HTTPS_PROXY
+        # 因此不需要手动配置代理，只需确保 .env 文件中配置了正确的代理即可
         if config.api.http_proxy or config.api.https_proxy:
-            # httpx 2.x 使用 proxy 或 mounts 参数
-            # 对于简单的代理配置，使用 proxy 参数
-            proxy_url = config.api.https_proxy or config.api.http_proxy
-            http_client = httpx.Client(proxy=proxy_url)
-            logger.info(f"已配置代理: {proxy_url}")
+            # 设置环境变量以便 httpx 自动使用
+            import os
+            if config.api.http_proxy:
+                os.environ['HTTP_PROXY'] = config.api.http_proxy
+            if config.api.https_proxy:
+                os.environ['HTTPS_PROXY'] = config.api.https_proxy
+            logger.info(f"已配置代理环境变量: HTTP_PROXY={config.api.http_proxy}, HTTPS_PROXY={config.api.https_proxy}")
         
         self.model = ChatOpenAI(
             base_url=config.api.base_url,
@@ -52,7 +54,6 @@ class LLMClient:
             model=config.api.model_name,
             temperature=config.api.temperature,
             timeout=config.api.timeout,
-            http_client=http_client  # type: ignore
         )
         
         self.config = config.api
@@ -202,8 +203,7 @@ class OCRAgent:
         if retry:
             result = self._process_with_retry(initial_state)
         else:
-            workflow_app = self.workflow.compile()
-            result = workflow_app.invoke(initial_state)  # type: ignore
+            result = self.workflow.invoke(initial_state)  # type: ignore
         
         elapsed_time = time.time() - start_time
         result['metadata']['elapsed_time'] = elapsed_time
@@ -229,12 +229,11 @@ class OCRAgent:
         """
         max_retries = self.config.max_retries
         retry_delay = self.config.retry_delay
-        workflow_app = self.workflow.compile()
         result: OCRState = initial_state  # 初始化
         
         for attempt in range(max_retries):
             try:
-                result = workflow_app.invoke(initial_state)  # type: ignore
+                result = self.workflow.invoke(initial_state)  # type: ignore
                 
                 # 检查是否成功
                 if (result.get('structured_data') and 
