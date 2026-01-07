@@ -56,8 +56,9 @@ python main.py --from-txt toc.txt --pdf book.pdf --output output.pdf
 - [使用教程](docs/usage.md)
 - [配置说明](docs/configuration.md)
 - [API 文档](docs/api.md)
-- [架构设计](ARCHITECTURE.md)
+- [架构设计](docs/architecture.md)
+- [开发计划](TODO.md)
 
 ## 许可证
 
-MIT License
+Apache-2.0 license
