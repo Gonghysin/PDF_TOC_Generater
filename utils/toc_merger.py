@@ -106,21 +106,31 @@ def merge_toc_pages(
     if not pages:
         raise ValueError("没有可合并的页面数据")
     
-    # 收集所有目录项
+    # 收集所有目录项，并转换书籍页码为PDF页码
     all_entries: List[TOCEntry] = []
     filtered_count = 0
-    
+
     for page in pages:
         for entry in page.entries:
-            # 过滤掉负数页码的条目
-            if entry.page >= 0:
-                all_entries.append(entry)
+            # OCR识别的是书籍页码，需要转换为PDF页码
+            # 公式：PDF页码 = 书籍页码 + (page_offset - 1)
+            pdf_page = entry.page + (page_offset - 1)
+
+            # 过滤掉无效的PDF页码（小于1）
+            if pdf_page >= 1:
+                # 创建新的TOCEntry，使用PDF页码
+                pdf_entry = TOCEntry(
+                    title=entry.title,
+                    page=pdf_page,  # 存储PDF页码
+                    level=entry.level
+                )
+                all_entries.append(pdf_entry)
             else:
                 filtered_count += 1
-                logger.warning(f"过滤掉负数页码条目: {entry.title} (page={entry.page})")
-    
+                logger.warning(f"过滤掉无效页码条目: {entry.title} (书籍页码={entry.page}, PDF页码={pdf_page})")
+
     if filtered_count > 0:
-        logger.info(f"已过滤 {filtered_count} 个负数页码条目")
+        logger.info(f"已过滤 {filtered_count} 个无效页码条目")
     
     # 按页码排序所有条目
     all_entries.sort(key=lambda e: e.page)

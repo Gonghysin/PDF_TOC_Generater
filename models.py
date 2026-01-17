@@ -36,13 +36,17 @@ class ValidationStatus(str, Enum):
 class TOCEntry:
     """
     目录项数据模型
-    
+
     表示书籍目录中的单个条目。
-    
+
     Attributes:
         title: 目录项标题（章节名称）
-        page: 书籍中标注的页码（未加偏置）
+        page: PDF文件中的实际页码（已加上页码偏置）
         level: 目录层级（1=章，2=节，3=小节，等）
+
+    Note:
+        page字段存储的是PDF页码，不是书籍页码。
+        转换公式：PDF页码 = 书籍页码 + (page_offset - 1)
     """
     title: str
     page: int

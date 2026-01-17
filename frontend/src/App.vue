@@ -4,13 +4,26 @@
       <div class="container">
         <h1 class="app-title">PDF 目录生成器</h1>
         <p class="app-subtitle">基于 AI 的 PDF 目录自动识别与添加工具</p>
+        <button
+          v-if="currentStep === 'upload'"
+          class="btn-history"
+          @click="currentStep = 'history'"
+        >
+          查看历史
+        </button>
       </div>
     </header>
 
     <main class="app-main">
       <div class="container">
+        <HistoryView
+          v-if="currentStep === 'history'"
+          @back="currentStep = 'upload'"
+          @edit="handleEditHistoryTask"
+        />
+
         <UploadView
-          v-if="currentStep === 'upload'"
+          v-else-if="currentStep === 'upload'"
           @uploaded="handleUploaded"
         />
 
@@ -25,8 +38,9 @@
           v-else-if="currentStep === 'edit'"
           :task-id="taskId"
           :toc-text="tocText"
+          :is-history-task="isHistoryTask"
           @completed="handleCompleted"
-          @back="currentStep = 'process'"
+          @back="handleEditBack"
         />
 
         <CompleteView
@@ -47,14 +61,17 @@
 
 <script>
 import { ref } from 'vue'
+import HistoryView from './views/HistoryView.vue'
 import UploadView from './views/UploadView.vue'
 import ProcessView from './views/ProcessView.vue'
 import EditView from './views/EditView.vue'
 import CompleteView from './views/CompleteView.vue'
+import api from './services/api'
 
 export default {
   name: 'App',
   components: {
+    HistoryView,
     UploadView,
     ProcessView,
     EditView,
@@ -66,21 +83,47 @@ export default {
     const taskId = ref(null)
     const tocText = ref('')
     const downloadUrl = ref('')
+    const isHistoryTask = ref(false)
 
     const handleUploaded = (info) => {
       pdfInfo.value = info
       currentStep.value = 'process'
+      isHistoryTask.value = false
     }
 
     const handleProcessStarted = (data) => {
       taskId.value = data.taskId
       tocText.value = data.tocText
       currentStep.value = 'edit'
+      isHistoryTask.value = false
+    }
+
+    const handleEditHistoryTask = async (historyTaskId) => {
+      try {
+        // 加载历史任务的详情
+        const response = await api.getTaskDetail(historyTaskId)
+
+        taskId.value = historyTaskId
+        tocText.value = response.toc_text || ''
+        isHistoryTask.value = true
+        currentStep.value = 'edit'
+      } catch (err) {
+        console.error('加载历史任务失败:', err)
+        alert(`加载任务失败: ${err.message}`)
+      }
     }
 
     const handleCompleted = (url) => {
       downloadUrl.value = url
       currentStep.value = 'complete'
+    }
+
+    const handleEditBack = () => {
+      if (isHistoryTask.value) {
+        currentStep.value = 'history'
+      } else {
+        currentStep.value = 'process'
+      }
     }
 
     const handleRestart = () => {
@@ -89,6 +132,7 @@ export default {
       taskId.value = null
       tocText.value = ''
       downloadUrl.value = ''
+      isHistoryTask.value = false
     }
 
     return {
@@ -97,9 +141,12 @@ export default {
       taskId,
       tocText,
       downloadUrl,
+      isHistoryTask,
       handleUploaded,
       handleProcessStarted,
+      handleEditHistoryTask,
       handleCompleted,
+      handleEditBack,
       handleRestart
     }
   }
@@ -119,6 +166,10 @@ export default {
   padding: var(--spacing-xl) 0;
 }
 
+.app-header .container {
+  position: relative;
+}
+
 .app-title {
   font-size: var(--font-size-3xl);
   font-weight: 700;
@@ -130,6 +181,24 @@ export default {
   font-size: var(--font-size-lg);
   color: var(--color-text-secondary);
   font-weight: 400;
+}
+
+.btn-history {
+  position: absolute;
+  top: 0;
+  right: 0;
+  padding: 10px 20px;
+  border: 1px solid var(--color-black);
+  background: var(--color-white);
+  color: var(--color-black);
+  font-family: var(--font-family);
+  font-size: 14px;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.btn-history:hover {
+  background: var(--color-beige);
 }
 
 .app-main {

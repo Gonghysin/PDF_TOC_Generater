@@ -56,9 +56,10 @@
               v-model.number="pageOffset"
               type="number"
               class="form-input"
-              placeholder="0"
+              placeholder="例如: 10"
+              min="1"
             />
-            <p class="form-hint">PDF 显示页码与实际页码的差值（通常为 0）</p>
+            <p class="form-hint">书籍第1页对应PDF文件第几页，这个数值就是偏置。例如：如果PDF第10页是书籍第1页，则填10</p>
           </div>
 
           <div class="form-group">
@@ -86,24 +87,58 @@
       <div v-else class="progress-container">
         <h3 class="section-title">正在处理</h3>
 
+        <!-- 主进度条 -->
         <ProgressBar
           :percentage="progress"
           :message="statusMessage"
-          label="OCR 识别进度"
+          label="总体进度"
         />
 
+        <!-- 详细进度信息 -->
+        <div class="progress-info">
+          <div class="progress-stats">
+            <div class="stat-item">
+              <div class="stat-value">{{ progress }}%</div>
+              <div class="stat-label">完成进度</div>
+            </div>
+            <div class="stat-item" v-if="currentStepName">
+              <div class="stat-value">{{ currentStepName }}</div>
+              <div class="stat-label">当前阶段</div>
+            </div>
+            <div class="stat-item" v-if="detailedProgress">
+              <div class="stat-value">{{ detailedProgress }}</div>
+              <div class="stat-label">处理详情</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 步骤指示器 -->
         <div class="progress-details">
           <div class="progress-step" :class="{ active: currentStep >= 1, completed: currentStep > 1 }">
-            <div class="step-icon">1</div>
+            <div class="step-icon">
+              <span v-if="currentStep > 1">✓</span>
+              <span v-else>1</span>
+            </div>
             <div class="step-text">提取目录页图片</div>
+            <div class="step-progress" v-if="currentStep === 1">{{ getStepProgress(1) }}</div>
           </div>
+          <div class="step-divider" :class="{ completed: currentStep > 1 }"></div>
           <div class="progress-step" :class="{ active: currentStep >= 2, completed: currentStep > 2 }">
-            <div class="step-icon">2</div>
+            <div class="step-icon">
+              <span v-if="currentStep > 2">✓</span>
+              <span v-else>2</span>
+            </div>
             <div class="step-text">AI 识别目录内容</div>
+            <div class="step-progress" v-if="currentStep === 2">{{ getStepProgress(2) }}</div>
           </div>
+          <div class="step-divider" :class="{ completed: currentStep > 2 }"></div>
           <div class="progress-step" :class="{ active: currentStep >= 3, completed: currentStep > 3 }">
-            <div class="step-icon">3</div>
+            <div class="step-icon">
+              <span v-if="currentStep > 3">✓</span>
+              <span v-else>3</span>
+            </div>
             <div class="step-text">合并目录数据</div>
+            <div class="step-progress" v-if="currentStep === 3">{{ getStepProgress(3) }}</div>
           </div>
         </div>
 
@@ -150,7 +185,7 @@ export default {
   emits: ['started', 'back'],
   setup(props, { emit }) {
     const pageRange = ref('')
-    const pageOffset = ref(0)
+    const pageOffset = ref(1)
     const parallel = ref(true)
     const processing = ref(false)
     const taskStarted = ref(false)
@@ -162,6 +197,49 @@ export default {
     const taskId = ref(null)
     const tocText = ref('')
     const totalEntries = ref(0)
+
+    // 计算属性：当前步骤名称
+    const currentStepName = computed(() => {
+      const stepNames = {
+        1: '提取图片',
+        2: 'AI识别',
+        3: '合并数据'
+      }
+      return stepNames[currentStep.value] || ''
+    })
+
+    // 计算属性：详细进度（从消息中提取 "1/3" 这样的信息）
+    const detailedProgress = computed(() => {
+      const match = statusMessage.value.match(/\((\d+)\/(\d+)\)/)
+      if (match) {
+        return `${match[1]}/${match[2]} 页`
+      }
+      return ''
+    })
+
+    // 获取步骤进度文字
+    const getStepProgress = (step) => {
+      if (currentStep.value === step) {
+        // 从消息中提取进度
+        const match = statusMessage.value.match(/\((\d+)\/(\d+)\)/)
+        if (match) {
+          return `${match[1]}/${match[2]}`
+        }
+        // 或者根据进度百分比计算
+        if (step === 1) {
+          return progress.value < 30 ? `${Math.round((progress.value / 30) * 100)}%` : '100%'
+        } else if (step === 2) {
+          if (progress.value >= 30 && progress.value < 60) {
+            return `${Math.round(((progress.value - 30) / 30) * 100)}%`
+          }
+        } else if (step === 3) {
+          if (progress.value >= 60 && progress.value < 100) {
+            return `${Math.round(((progress.value - 60) / 40) * 100)}%`
+          }
+        }
+      }
+      return ''
+    }
 
     const startProcessing = async () => {
       if (!pageRange.value) {
@@ -251,6 +329,9 @@ export default {
       statusMessage,
       currentStep,
       totalEntries,
+      currentStepName,
+      detailedProgress,
+      getStepProgress,
       startProcessing,
       goToEdit,
       formatFileSize
@@ -385,21 +466,57 @@ export default {
   text-align: center;
 }
 
+.progress-info {
+  margin-top: var(--spacing-lg);
+  margin-bottom: var(--spacing-xl);
+  padding: var(--spacing-lg);
+  background: var(--color-beige);
+  border-radius: var(--radius-md);
+}
+
+.progress-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: var(--spacing-lg);
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.stat-value {
+  font-size: var(--font-size-2xl);
+  font-weight: 700;
+  color: var(--color-orange);
+}
+
+.stat-label {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
 .progress-details {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   margin-top: var(--spacing-xl);
   margin-bottom: var(--spacing-xl);
+  padding: 0 var(--spacing-md);
 }
 
 .progress-step {
-  flex: 1;
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: var(--spacing-xs);
   opacity: 0.4;
-  transition: opacity var(--transition-base);
+  transition: all var(--transition-base);
+  position: relative;
 }
 
 .progress-step.active {
@@ -411,18 +528,28 @@ export default {
 }
 
 .step-icon {
-  width: 40px;
-  height: 40px;
+  width: 48px;
+  height: 48px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  border: 2px solid var(--color-border);
-  font-weight: 600;
+  border: 3px solid var(--color-border);
+  font-weight: 700;
+  font-size: var(--font-size-lg);
   color: var(--color-text-secondary);
+  background: var(--color-white);
+  transition: all var(--transition-base);
 }
 
-.progress-step.active .step-icon,
+.progress-step.active .step-icon {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: var(--color-white);
+  transform: scale(1.1);
+  box-shadow: 0 4px 12px rgba(255, 107, 53, 0.3);
+}
+
 .progress-step.completed .step-icon {
   border-color: var(--color-primary);
   background: var(--color-primary);
@@ -433,6 +560,39 @@ export default {
   font-size: var(--font-size-sm);
   color: var(--color-text-secondary);
   text-align: center;
+  font-weight: 500;
+}
+
+.progress-step.active .step-text {
+  color: var(--color-black);
+  font-weight: 600;
+}
+
+.step-progress {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  background: var(--color-orange);
+  color: var(--color-white);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+
+.step-divider {
+  flex: 1;
+  height: 3px;
+  background: var(--color-border);
+  margin: 0 var(--spacing-sm);
+  position: relative;
+  top: -20px;
+  transition: background var(--transition-base);
+}
+
+.step-divider.completed {
+  background: var(--color-primary);
 }
 
 .completion-message {

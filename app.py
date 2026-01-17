@@ -20,6 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 # 导入项目模块
+from database import DatabaseManager
 from config import get_config, PathConfig
 from models import MergedTOC, TOCEntry, TOCMetadata
 from utils.pdf_extractor import (
@@ -35,6 +36,10 @@ from utils.toc_merger import (
 )
 from utils.pdf_writer import write_toc_safely, has_toc
 from agent.ocr_agent import OCRAgent
+
+
+# 初始化数据库管理器
+db_manager = DatabaseManager("data/tasks.db")
 
 
 # 初始化 FastAPI 应用
@@ -88,6 +93,21 @@ class TOCEditRequest(BaseModel):
     """目录编辑请求模型"""
     task_id: str
     toc_text: str
+
+
+class StructuredTOCEntry(BaseModel):
+    """结构化 TOC 条目模型"""
+    title: str
+    level: int  # 1-5
+    book_page: int  # 书籍页码
+    order_index: Optional[int] = None  # 排序索引（可选，自动生成）
+
+
+class StructuredTOCUpdateRequest(BaseModel):
+    """结构化 TOC 更新请求模型"""
+    task_id: str
+    entries: List[StructuredTOCEntry]
+    page_offset: int  # 用于计算 PDF 页码
 
 
 class TaskStatusResponse(BaseModel):
@@ -225,7 +245,7 @@ async def start_ocr_task(
         # 生成任务 ID
         task_id = str(uuid.uuid4())
 
-        # 初始化任务状态
+        # 初始化任务状态（内存）
         tasks_storage[task_id] = {
             "task_id": task_id,
             "status": "pending",
@@ -236,6 +256,17 @@ async def start_ocr_task(
             "page_range": page_range,
             "page_offset": page_offset
         }
+
+        # 同时保存到数据库
+        db_manager.create_task({
+            "task_id": task_id,
+            "pdf_path": pdf_path,
+            "pdf_filename": Path(pdf_path).name,
+            "page_offset": page_offset,
+            "page_range": page_range,
+            "status": "pending",
+            "progress": 0
+        })
 
         # 在后台执行 OCR 任务
         background_tasks.add_task(
@@ -273,6 +304,25 @@ async def get_task_status(task_id: str):
     Returns:
         TaskStatusResponse
     """
+    # 优先从数据库读取
+    task_db = db_manager.get_task(task_id)
+
+    if task_db:
+        # 从数据库获取任务信息
+        task_data = {
+            "task_id": task_db["task_id"],
+            "status": task_db["status"],
+            "progress": task_db["progress"],
+            "message": task_db.get("error_message") or "处理中...",
+        }
+
+        # 如果内存中有结果，添加结果信息
+        if task_id in tasks_storage and tasks_storage[task_id].get("result"):
+            task_data["result"] = tasks_storage[task_id]["result"]
+
+        return TaskStatusResponse(**task_data, error=task_db.get("error_message"))
+
+    # 回退到内存存储
     if task_id not in tasks_storage:
         raise HTTPException(status_code=404, detail="任务不存在")
 
@@ -339,6 +389,127 @@ async def edit_toc(request: TOCEditRequest):
     except Exception as e:
         logger.error(f"编辑目录失败: {e}")
         raise HTTPException(status_code=500, detail=f"编辑失败: {str(e)}")
+
+
+@app.post("/api/toc/update-structured")
+async def update_structured_toc(request: StructuredTOCUpdateRequest):
+    """
+    更新结构化 TOC 条目
+
+    Args:
+        request: 包含 task_id, entries 和 page_offset
+
+    Returns:
+        {
+            "success": bool,
+            "message": str,
+            "entries": List[dict],
+            "toc_text": str
+        }
+    """
+    try:
+        # 验证任务存在
+        task = db_manager.get_task(request.task_id)
+        if not task:
+            raise HTTPException(status_code=404, detail="任务不存在")
+
+        # 转换为 TOCEntry 对象列表
+        toc_entries = []
+        invalid_entries = []
+
+        for entry_data in request.entries:
+            # 计算 PDF 页码：pdf_page = book_page + (page_offset - 1)
+            # 注意：书籍页码可以是负数（摘要、前言等），但PDF页码必须≥1
+            pdf_page = entry_data.book_page + (request.page_offset - 1)
+
+            if pdf_page < 1:
+                invalid_entries.append({
+                    "title": entry_data.title,
+                    "book_page": entry_data.book_page,
+                    "pdf_page": pdf_page
+                })
+                logger.warning(f"跳过无效条目: {entry_data.title} (书籍页码={entry_data.book_page}, PDF页码={pdf_page})")
+                continue
+
+            toc_entry = TOCEntry(
+                title=entry_data.title,
+                page=pdf_page,  # 存储 PDF 页码
+                level=entry_data.level
+            )
+            toc_entries.append(toc_entry)
+
+        # 如果所有条目都无效，返回错误
+        if not toc_entries:
+            raise HTTPException(
+                status_code=400,
+                detail=f"所有条目的PDF页码都小于1，请检查页码偏置设置（当前偏置={request.page_offset}）"
+            )
+
+        # 如果有部分无效条目，记录警告
+        if invalid_entries:
+            logger.warning(f"跳过了 {len(invalid_entries)} 个PDF页码<1的条目")
+
+        # 保存到数据库
+        db_manager.save_toc_entries(request.task_id, toc_entries)
+
+        # 更新任务的 page_offset
+        db_manager.update_task(request.task_id, {
+            "page_offset": request.page_offset
+        })
+
+        # 生成文本格式
+        from utils.toc_merger import export_toc_to_text
+        merged = MergedTOC(
+            toc=toc_entries,
+            metadata=TOCMetadata(
+                pdf_path=task['pdf_path'],
+                page_offset=request.page_offset,
+                total_entries=len(toc_entries)
+            )
+        )
+
+        # 导出到临时文件
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as f:
+            export_toc_to_text(merged, f.name)
+            with open(f.name, 'r', encoding='utf-8') as rf:
+                toc_text = rf.read()
+        os.remove(f.name)
+
+        # 如果内存中有任务，同步更新
+        if request.task_id in tasks_storage:
+            tasks_storage[request.task_id]["result"] = {
+                "merged_toc": merged.to_dict(),
+                "toc_text": toc_text,
+                "total_entries": len(toc_entries)
+            }
+
+        logger.info(f"结构化 TOC 已更新: {request.task_id}, {len(toc_entries)} 个条目")
+
+        # 返回更新后的条目（包含书籍页码和 PDF 页码）
+        entries_response = [
+            {
+                "title": entry.title,
+                "level": entry.level,
+                "book_page": request.entries[i].book_page,
+                "pdf_page": entry.page,
+                "order_index": i
+            }
+            for i, entry in enumerate(toc_entries)
+        ]
+
+        return {
+            "success": True,
+            "message": f"TOC 已更新，共 {len(toc_entries)} 个条目",
+            "entries": entries_response,
+            "toc_text": toc_text
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"更新结构化 TOC 失败: {e}")
+        raise HTTPException(status_code=500, detail=f"更新失败: {str(e)}")
 
 
 @app.post("/api/toc/write")
@@ -424,6 +595,168 @@ async def download_file(filename: str):
     )
 
 
+# ======================== 任务历史 API ========================
+
+@app.get("/api/tasks")
+async def list_tasks(
+    status: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 20
+):
+    """
+    获取任务列表（分页）
+
+    Args:
+        status: 状态过滤（可选）: pending, processing, completed, failed
+        page: 页码（从 1 开始）
+        page_size: 每页数量
+
+    Returns:
+        {
+            "tasks": List[dict],
+            "total": int,
+            "page": int,
+            "page_size": int,
+            "total_pages": int
+        }
+    """
+    try:
+        # 计算偏移量
+        offset = (page - 1) * page_size
+
+        # 从数据库获取任务列表
+        tasks = db_manager.list_tasks(status=status, limit=page_size, offset=offset)
+        total = db_manager.count_tasks(status=status)
+        total_pages = (total + page_size - 1) // page_size
+
+        # 为每个任务添加 TOC 条目数量
+        for task in tasks:
+            task['toc_count'] = db_manager.count_toc_entries(task['task_id'])
+
+        return {
+            "tasks": tasks,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages
+        }
+
+    except Exception as e:
+        logger.error(f"获取任务列表失败: {e}")
+        raise HTTPException(status_code=500, detail=f"获取列表失败: {str(e)}")
+
+
+@app.get("/api/tasks/{task_id}")
+async def get_task_detail(task_id: str):
+    """
+    获取任务详情及 TOC 条目
+
+    Args:
+        task_id: 任务 ID
+
+    Returns:
+        {
+            "task": dict,
+            "toc_entries": List[dict],
+            "toc_text": str
+        }
+    """
+    try:
+        # 从数据库获取任务信息
+        task = db_manager.get_task(task_id)
+
+        if not task:
+            raise HTTPException(status_code=404, detail="任务不存在")
+
+        # 获取 TOC 条目
+        toc_entries = db_manager.get_toc_entries(task_id)
+
+        # 转换为字典列表
+        entries_dict = [
+            {
+                "title": entry.title,
+                "page": entry.page,
+                "level": entry.level
+            }
+            for entry in toc_entries
+        ]
+
+        # 生成文本格式（如果有条目）
+        toc_text = ""
+        if toc_entries:
+            from utils.toc_merger import export_toc_to_text
+            merged = MergedTOC(
+                toc=toc_entries,
+                metadata=TOCMetadata(
+                    pdf_path=task['pdf_path'],
+                    page_offset=task.get('page_offset', 0),
+                    total_entries=len(toc_entries)
+                )
+            )
+            # 导出到临时文件
+            import tempfile
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as f:
+                export_toc_to_text(merged, f.name)
+                with open(f.name, 'r', encoding='utf-8') as rf:
+                    toc_text = rf.read()
+            os.remove(f.name)
+
+        return {
+            "task": task,
+            "toc_entries": entries_dict,
+            "toc_text": toc_text,
+            "toc_count": len(toc_entries)
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取任务详情失败: {e}")
+        raise HTTPException(status_code=500, detail=f"获取详情失败: {str(e)}")
+
+
+@app.delete("/api/tasks/{task_id}")
+async def delete_task(task_id: str):
+    """
+    删除任务及其所有关联数据
+
+    Args:
+        task_id: 任务 ID
+
+    Returns:
+        {
+            "success": bool,
+            "message": str
+        }
+    """
+    try:
+        # 检查任务是否存在
+        task = db_manager.get_task(task_id)
+
+        if not task:
+            raise HTTPException(status_code=404, detail="任务不存在")
+
+        # 从数据库删除
+        db_manager.delete_task(task_id)
+
+        # 从内存删除（如果存在）
+        if task_id in tasks_storage:
+            del tasks_storage[task_id]
+
+        logger.info(f"任务已删除: {task_id}")
+
+        return {
+            "success": True,
+            "message": "任务已删除"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"删除任务失败: {e}")
+        raise HTTPException(status_code=500, detail=f"删除失败: {str(e)}")
+
+
 @app.post("/api/import/text")
 async def import_from_text(
     pdf_path: str = Form(...),
@@ -506,10 +839,16 @@ async def run_ocr_task(
         parallel: 是否并行处理
     """
     try:
-        # 更新任务状态
+        # 更新任务状态（内存）
         tasks_storage[task_id]["status"] = "processing"
         tasks_storage[task_id]["progress"] = 10
         tasks_storage[task_id]["message"] = "正在提取目录页图片..."
+
+        # 同步到数据库
+        db_manager.update_task(task_id, {
+            "status": "processing",
+            "progress": 10
+        })
 
         # Step 1: 提取图片
         from config import PathConfig
@@ -562,12 +901,22 @@ async def run_ocr_task(
 
         tasks_storage[task_id]["progress"] = 100
         tasks_storage[task_id]["status"] = "completed"
-        tasks_storage[task_id]["message"] = f"处理完成，识别到 {len(merged.toc)} 个目录条目"
+        tasks_storage[task_id]["message"] = f"处理完成,识别到 {len(merged.toc)} 个目录条目"
         tasks_storage[task_id]["result"] = {
             "merged_toc": merged.to_dict(),
             "toc_text": toc_text,
             "total_entries": len(merged.toc)
         }
+
+        # 同步到数据库
+        db_manager.update_task(task_id, {
+            "status": "completed",
+            "progress": 100,
+            "completed_at": datetime.now().isoformat()
+        })
+
+        # 保存 TOC 条目到数据库
+        db_manager.save_toc_entries(task_id, merged.toc)
 
         logger.info(f"OCR 任务完成: {task_id}")
 
@@ -577,6 +926,13 @@ async def run_ocr_task(
         tasks_storage[task_id]["progress"] = 0
         tasks_storage[task_id]["error"] = str(e)
         tasks_storage[task_id]["message"] = f"处理失败: {str(e)}"
+
+        # 同步到数据库
+        db_manager.update_task(task_id, {
+            "status": "failed",
+            "progress": 0,
+            "error_message": str(e)
+        })
 
 
 async def _process_images_parallel(agent, image_paths: list, start_page_number: int, task_id: str):

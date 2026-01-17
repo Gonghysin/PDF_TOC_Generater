@@ -145,6 +145,79 @@ class APIService {
   getDownloadURL(filename) {
     return `${API_BASE_URL}/api/download/${filename}`
   }
+
+  /**
+   * 获取任务列表
+   */
+  async getTasks(status = null, page = 1, pageSize = 20) {
+    const params = new URLSearchParams({
+      page: page.toString(),
+      page_size: pageSize.toString()
+    })
+
+    if (status) {
+      params.append('status', status)
+    }
+
+    const response = await fetch(`${API_BASE_URL}/api/tasks?${params}`)
+
+    if (!response.ok) {
+      throw new Error(`获取任务列表失败: ${response.statusText}`)
+    }
+
+    return await response.json()
+  }
+
+  /**
+   * 获取任务详情
+   */
+  async getTaskDetail(taskId) {
+    const response = await fetch(`${API_BASE_URL}/api/tasks/${taskId}`)
+
+    if (!response.ok) {
+      throw new Error(`获取任务详情失败: ${response.statusText}`)
+    }
+
+    return await response.json()
+  }
+
+  /**
+   * 删除任务
+   */
+  async deleteTask(taskId) {
+    const response = await fetch(`${API_BASE_URL}/api/tasks/${taskId}`, {
+      method: 'DELETE'
+    })
+
+    if (!response.ok) {
+      throw new Error(`删除任务失败: ${response.statusText}`)
+    }
+
+    return await response.json()
+  }
+
+  /**
+   * 更新结构化 TOC
+   */
+  async updateStructuredTOC(taskId, entries, pageOffset) {
+    const response = await fetch(`${API_BASE_URL}/api/toc/update-structured`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        task_id: taskId,
+        entries: entries,
+        page_offset: pageOffset
+      })
+    })
+
+    if (!response.ok) {
+      throw new Error(`更新结构化 TOC 失败: ${response.statusText}`)
+    }
+
+    return await response.json()
+  }
 }
 
 export default new APIService()
