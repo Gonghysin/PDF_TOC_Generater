@@ -44,11 +44,24 @@ python main.py --pdf book.pdf --range 8-10 --offset 11
 
 ```
 1. 提取目录页 → 导出为图片
-2. OCR 识别 → 生成 JSON 文件（temp/toc_json/）
-3. 合并数据 → 生成完整目录（temp/toc_merged.json）
-4. 导出文本 → 供查看修改（temp/toc.txt）
-5. 写入 PDF → 生成带目录的 PDF
+2. OCR 识别 → 生成 JSON 文件（{PDF名}_temp/toc_json/）
+3. 合并数据 → 生成完整目录（{PDF名}_temp/toc_merged.json）
+4. 导出文本 → 生成可编辑文件（{PDF名}_temp/toc.txt）
+5. 用户审核 → 打开编辑器供用户检查和修改
+6. 确认写入 → 生成带目录的 PDF
 ```
+
+**新增：用户审核步骤**
+
+在步骤 4 和 6 之间，系统会：
+1. 自动打开文本编辑器显示 `toc.txt`
+2. 用户可以修改任何识别错误的内容
+3. 保存并关闭编辑器
+4. 在终端输入 `ok` 确认继续，或 `cancel` 取消
+
+**临时文件位置**
+
+所有临时文件现在存储在 PDF 同目录下的 `{PDF文件名}_temp/` 文件夹中，方便管理和清理。
 
 ### 模式 2：文本导入（适合修正或复用）
 
@@ -103,19 +116,34 @@ PDF 目录
 python main.py --pdf book.pdf --range 8-10 --offset 11 --output book_with_toc.pdf
 ```
 
-### 场景 2：修正识别错误
+### 场景 2：审核和修正识别结果
 
 ```bash
-# 1. 先识别
+# OCR 识别后会自动进入审核流程
 python main.py --pdf book.pdf --range 8-10 --offset 11
 
-# 2. 手动编辑 temp/toc.txt 修正错误
-
-# 3. 重新导入
-python main.py --from-txt temp/toc.txt --pdf book.pdf --output book_corrected.pdf
+# 在审核步骤：
+# 1. 系统自动打开 toc.txt 编辑器
+# 2. 检查并修改识别错误的内容
+# 3. 保存并关闭编辑器
+# 4. 在终端输入 'ok' 确认
 ```
 
-### 场景 3：批量处理
+### 场景 3：手动编辑后重新导入
+
+如果需要大量修改，可以先取消审核，稍后手动编辑：
+
+```bash
+# 1. 先识别（审核时输入 'cancel' 取消）
+python main.py --pdf book.pdf --range 8-10 --offset 11
+
+# 2. 手动编辑 {PDF名}_temp/toc.txt
+
+# 3. 重新导入
+python main.py --from-txt book_temp/toc.txt --pdf book.pdf --output book_corrected.pdf
+```
+
+### 场景 4：批量处理
 
 ```bash
 # 复用同一目录结构
@@ -149,11 +177,13 @@ python main.py --clean
 
 ### 生成的文件
 
+临时文件位置：`{PDF文件名}_temp/`（在 PDF 同目录下）
+
 - `logs/toc_builder_YYYYMMDD_HHMMSS.log`: 运行日志
-- `temp/toc_images/page_N.jpg`: 目录页图片
-- `temp/toc_json/page_N.json`: 单页识别结果
-- `temp/toc_merged.json`: 合并后的完整目录
-- `temp/toc.txt`: 文本格式目录
+- `{PDF名}_temp/toc_images/page_N.jpg`: 目录页图片
+- `{PDF名}_temp/toc_json/page_N.json`: 单页识别结果
+- `{PDF名}_temp/toc_merged.json`: 合并后的完整目录
+- `{PDF名}_temp/toc.txt`: 文本格式目录（可编辑）
 - 输出 PDF: 带目录的 PDF 文件
 
 ### 备份机制
@@ -166,10 +196,27 @@ python main.py --clean
 
 ### Q: 识别结果不准确？
 
-A: 
-1. 检查目录页图片质量（temp/toc_images/）
+A:
+1. 检查目录页图片质量（{PDF名}_temp/toc_images/）
 2. 尝试调整 PDF 页码范围
-3. 手动修正 toc.txt 后重新导入
+3. 在审核步骤手动修正 toc.txt
+4. 或取消后手动编辑 toc.txt 重新导入
+
+### Q: 审核时编辑器没有自动打开？
+
+A:
+1. 检查终端提示，可能需要手动打开文件
+2. 文件路径会显示在终端中：`{PDF名}_temp/toc.txt`
+3. 手动编辑后在终端输入 'ok' 继续
+
+### Q: 如何跳过审核步骤？
+
+A: 目前审核步骤是必需的，但你可以：
+1. 按 Enter 打开编辑器
+2. 直接关闭编辑器（不做修改）
+3. 在终端输入 'ok' 继续
+
+或在审核步骤输入 'cancel' 取消，稍后使用文本导入模式。
 
 ### Q: 层级识别错误？
 
