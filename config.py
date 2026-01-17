@@ -122,6 +122,38 @@ class PathConfig:
             prompts_dir=project_root / 'prompt'
         )
     
+    @classmethod
+    def from_pdf_path(cls, pdf_path: str) -> 'PathConfig':
+        """
+        根据 PDF 路径创建路径配置
+        
+        在 PDF 文件所在目录下创建以 PDF 文件名命名的 temp 文件夹
+        
+        Args:
+            pdf_path: PDF 文件路径
+            
+        Returns:
+            PathConfig: 路径配置实例
+        """
+        project_root = Path(__file__).parent
+        pdf_path_obj = Path(pdf_path).resolve()
+        
+        # 获取 PDF 文件名（不含扩展名）
+        pdf_name = pdf_path_obj.stem
+        
+        # 在 PDF 同目录下创建 temp 文件夹
+        temp_dir = pdf_path_obj.parent / f"{pdf_name}_temp"
+        
+        return cls(
+            project_root=project_root,
+            temp_dir=temp_dir,
+            toc_images_dir=temp_dir / 'toc_images',
+            toc_json_dir=temp_dir / 'toc_json',
+            debug_dir=temp_dir / 'debug',
+            schemas_dir=project_root / 'schemas',
+            prompts_dir=project_root / 'prompt'
+        )
+    
     def create_directories(self) -> None:
         """
         创建所有必需的目录

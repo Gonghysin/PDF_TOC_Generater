@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Optional
 
 from config import get_config
+from models import MergedTOC
 from utils.pdf_extractor import (
     extract_and_optimize_toc_pages,
     get_pdf_page_count,
@@ -63,15 +64,29 @@ def setup_logging() -> str:
 logger = logging.getLogger(__name__)
 
 
-def setup_environment() -> None:
+def setup_environment(pdf_path: Optional[str] = None) -> None:
     """
     设置运行环境
     
     创建必需的目录结构。
+    
+    Args:
+        pdf_path: PDF 文件路径（可选），如果提供则在 PDF 同目录创建 temp 文件夹
     """
-    config = get_config()
-    config.paths.create_directories()
-    logger.info("环境设置完成")
+    from config import PathConfig
+    
+    if pdf_path:
+        # 使用 PDF 路径创建配置
+        paths = PathConfig.from_pdf_path(pdf_path)
+        paths.create_directories()
+        logger.info(f"环境设置完成，临时文件夹: {paths.temp_dir}")
+        # 更新全局配置
+        config = get_config()
+        config.paths = paths
+    else:
+        config = get_config()
+        config.paths.create_directories()
+        logger.info("环境设置完成")
 
 
 def get_user_input() -> tuple:
@@ -359,62 +374,139 @@ def step_3_merge_toc(
 ):
     """
     步骤 3: 合并目录数据
-    
+
     Args:
         pdf_path: PDF 文件路径
         page_offset: 页码偏置
         page_range: 页码范围
-        
+
     Returns:
         MergedTOC: 合并后的目录对象
     """
     print("\n" + "-"*60)
     print("步骤 3/4: 合并目录数据")
     print("-"*60)
-    
+
     try:
         config = get_config()
         output_path = config.paths.temp_dir / 'toc_merged.json'
-        
+
         merged = merge_from_directory(
             pdf_path=pdf_path,
             page_offset=page_offset,
             toc_page_range=page_range,
             output_path=str(output_path)
         )
-        
+
         print(f"✓ 目录合并完成: {len(merged.toc)} 个条目")
-        
+
         # 验证
         validation = validate_merged_toc(merged)
-        
+
         if validation['warnings']:
             print("\n⚠️  发现以下警告:")
             for warning in validation['warnings'][:5]:  # 只显示前5个
                 print(f"  - {warning}")
             if len(validation['warnings']) > 5:
                 print(f"  ... 还有 {len(validation['warnings']) - 5} 个警告")
-        
+
         if not validation['is_valid']:
             print("\n❌ 目录验证失败:")
             for error in validation['errors']:
                 print(f"  - {error}")
             sys.exit(1)
-        
+
         # 显示摘要
         print_toc_summary(merged)
-        
+
         # 导出文本格式
         text_path = config.paths.temp_dir / 'toc.txt'
         export_toc_to_text(merged, str(text_path))
         print(f"✓ 已导出文本格式: {text_path}")
-        
-        return merged
-    
+
+        return merged, str(text_path)
+
     except Exception as e:
         logger.error(f"合并目录失败: {e}")
         print(f"❌ 合并目录失败: {e}")
         sys.exit(1)
+
+
+def review_toc_file(toc_txt_path: str, pdf_path: str) -> 'MergedTOC':
+    """
+    让用户审核并编辑 toc.txt 文件
+
+    Args:
+        toc_txt_path: toc.txt 文件路径
+        pdf_path: PDF 文件路径
+
+    Returns:
+        MergedTOC: 用户审核后的目录对象
+    """
+    import subprocess
+    import platform
+
+    print("\n" + "-"*60)
+    print("步骤 3.5: 审核目录文件")
+    print("-"*60)
+    print(f"\n请审核并编辑目录文件: {toc_txt_path}")
+    print("\n提示:")
+    print("  1. 即将打开文本编辑器，请检查并修改目录内容")
+    print("  2. 确认无误后，保存并关闭编辑器")
+    print("  3. 返回终端确认")
+
+    input("\n按 Enter 键打开编辑器...")
+
+    # 根据操作系统打开默认编辑器
+    system = platform.system()
+    try:
+        if system == "Darwin":  # macOS
+            subprocess.run(["open", "-t", toc_txt_path])
+        elif system == "Windows":
+            subprocess.run(["notepad", toc_txt_path])
+        else:  # Linux
+            # 尝试常见的编辑器
+            editors = ["xdg-open", "gedit", "nano", "vim"]
+            for editor in editors:
+                try:
+                    subprocess.run([editor, toc_txt_path])
+                    break
+                except FileNotFoundError:
+                    continue
+    except Exception as e:
+        logger.warning(f"无法自动打开编辑器: {e}")
+        print(f"⚠️  无法自动打开编辑器，请手动打开文件: {toc_txt_path}")
+
+    # 等待用户确认
+    while True:
+        confirm = input("\n审核完成后，请输入 'ok' 确认，或输入 'cancel' 取消: ").strip().lower()
+
+        if confirm == 'cancel':
+            print("已取消")
+            sys.exit(0)
+
+        if confirm == 'ok':
+            break
+
+        print("❌ 请输入 'ok' 或 'cancel'")
+
+    # 重新加载编辑后的文件
+    print("\n正在加载审核后的目录文件...")
+    try:
+        merged = import_toc_from_text_file(toc_txt_path, pdf_path=pdf_path)
+        print(f"✓ 加载成功: {len(merged.toc)} 个条目")
+
+        # 显示更新后的摘要
+        print_toc_summary(merged)
+
+        return merged
+
+    except Exception as e:
+        logger.error(f"加载审核后的文件失败: {e}")
+        print(f"❌ 加载失败: {e}")
+        print("请检查文件格式是否正确")
+        sys.exit(1)
+
 
 
 def step_4_write_to_pdf(pdf_path: str, merged) -> None:
@@ -466,20 +558,20 @@ def step_4_write_to_pdf(pdf_path: str, merged) -> None:
 def main() -> None:
     """
     主函数
-    
+
     执行完整的 PDF 目录添加流程。
     """
     try:
-        # 设置环境
-        setup_environment()
-        
         # 获取用户输入
         user_input = get_user_input()
-        
+
         # 检查是文本导入模式还是 OCR 模式
         if user_input[0] == 'txt':
             # 文本导入模式
             _, txt_path, pdf_path = user_input
+
+            # 设置环境（使用 PDF 路径）
+            setup_environment(pdf_path)
             
             # 确认执行
             print("\n" + "="*60)
@@ -493,6 +585,7 @@ def main() -> None:
                 print("已取消")
                 sys.exit(0)
             
+            
             # 导入并写入
             print("\n正在解析文本文件...")
             merged = import_toc_from_text_file(txt_path, pdf_path=pdf_path)
@@ -504,6 +597,9 @@ def main() -> None:
         else:
             # OCR 识别模式
             pdf_path, page_range, page_offset = user_input
+
+            # 设置环境（使用 PDF 路径）
+            setup_environment(pdf_path)
             
             # 确认执行
             print("\n" + "="*60)
@@ -520,16 +616,19 @@ def main() -> None:
             
             # 执行流程
             print("\n开始处理...\n")
-            
+
             # Step 1: 提取图片
             image_paths = step_1_extract_images(pdf_path, page_range)
-            
+
             # Step 2: OCR 识别（并行）
             step_2_ocr_recognition(image_paths, parallel=True)
-            
+
             # Step 3: 合并目录
-            merged = step_3_merge_toc(pdf_path, page_offset, page_range)
-            
+            merged, toc_txt_path = step_3_merge_toc(pdf_path, page_offset, page_range)
+
+            # Step 3.5: 用户审核 toc.txt
+            merged = review_toc_file(toc_txt_path, pdf_path)
+
             # Step 4: 写入 PDF
             step_4_write_to_pdf(pdf_path, merged)
         
@@ -650,7 +749,7 @@ def run_cli_mode(
 ) -> None:
     """
     命令行模式
-    
+
     Args:
         pdf_path: PDF 文件路径
         page_range: 页码范围
@@ -659,18 +758,21 @@ def run_cli_mode(
         parallel: 是否并行处理（默认 True）
     """
     try:
-        setup_environment()
-        
+        setup_environment(pdf_path)
+
         print(f"处理 PDF: {pdf_path}")
         print(f"目录范围: {page_range}")
         print(f"页码偏置: {page_offset}")
         print(f"并行处理: {'是' if parallel else '否'}")
-        
+
         # 执行流程
         image_paths = step_1_extract_images(pdf_path, page_range)
         step_2_ocr_recognition(image_paths, parallel=parallel)
-        merged = step_3_merge_toc(pdf_path, page_offset, page_range)
-        
+        merged, toc_txt_path = step_3_merge_toc(pdf_path, page_offset, page_range)
+
+        # 用户审核
+        merged = review_toc_file(toc_txt_path, pdf_path)
+
         # 写入
         result_path = write_toc_safely(
             pdf_path=pdf_path,
@@ -678,9 +780,9 @@ def run_cli_mode(
             output_path=output_path,
             force=True
         )
-        
+
         print(f"\n✓ 完成: {result_path}")
-    
+
     except Exception as e:
         logger.exception("命令行模式执行失败")
         print(f"❌ 失败: {e}")
@@ -694,15 +796,15 @@ def run_import_mode(
 ) -> None:
     """
     从文本文件导入模式
-    
+
     Args:
         txt_path: 文本文件路径
         pdf_path: 目标 PDF 文件路径
         output_path: 输出文件路径（可选）
     """
     try:
-        setup_environment()
-        
+        setup_environment(pdf_path)
+
         print("="*60)
         print("从文本文件导入目录")
         print("="*60)
@@ -711,14 +813,14 @@ def run_import_mode(
         if output_path:
             print(f"输出文件: {output_path}")
         print()
-        
+
         # 导入目录
         print("正在解析文本文件...")
         merged = import_toc_from_text_file(txt_path, pdf_path=pdf_path)
-        
+
         # 显示摘要
         print_toc_summary(merged)
-        
+
         # 写入 PDF
         print("\n正在写入 PDF...")
         result_path = write_toc_safely(
@@ -727,9 +829,9 @@ def run_import_mode(
             output_path=output_path,
             force=True
         )
-        
+
         print(f"\n✓ 完成: {result_path}")
-    
+
     except Exception as e:
         logger.exception("导入模式执行失败")
         print(f"❌ 失败: {e}")
