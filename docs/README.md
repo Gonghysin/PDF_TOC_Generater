@@ -1,91 +1,104 @@
-# PDF TOC Generator
+# 文档中心
 
-基于 AI 的 PDF 目录自动识别与添加工具。
+欢迎使用 PDF 目录生成器！这里是完整的文档导航。
 
-## 简介
+## 📚 用户文档
 
-自动识别 PDF 书籍的目录页并将其写入 PDF 元数据，支持 OCR 识别和文本导入两种模式。
+### 快速开始
+- [README](../README.md) - 项目概览和快速开始
+- [安装指南](installation.md) - 详细安装步骤
+- [使用教程](usage.md) - 完整使用说明
 
-## 核心功能
+### 配置和 API
+- [配置说明](configuration.md) - 环境变量和配置文件
+- [API 文档](api.md) - REST API 接口文档
 
-- AI 驱动的 OCR 目录识别
-- 智能页码对齐（页码偏置）
-- 层级结构识别（章、节、小节）
-- 文本格式导入导出
-- 命令行与交互式操作
-- 并行处理加速
+## 🔧 开发文档
 
-## 技术栈
+### 架构和设计
+- [架构设计](architecture.md) - 系统架构和技术选型
+- [开发文档](development/) - 实现计划和指南
 
-- **Agent 框架**: LangGraph
-- **LLM**: OpenRouter API
-- **PDF 处理**: PyMuPDF
-- **图像处理**: Pillow
-- **数据验证**: JSON Schema
+### 开发相关
+- [TODO](../TODO.md) - 开发计划和路线图
+- [CHANGELOG](../CHANGELOG.md) - 更新日志
 
-## 快速开始
+## 🎯 功能说明
 
-### 安装
+### Web 界面功能
 
+**上传和处理**
+- PDF 文件上传（拖拽或选择）
+- 实时处理进度显示
+- 多阶段任务跟踪
+
+**目录编辑**
+- 结构化表格编辑器
+- 文本格式编辑器
+- 双模式切换
+- 撤销/重做功能
+
+**历史管理**
+- 任务历史记录
+- 重新编辑和导出
+- 任务过滤和删除
+
+### 命令行功能
+
+**OCR 识别**
 ```bash
-# 克隆仓库
-git clone git@github.com:Gonghysin/PDF_TOC_Generater.git
-cd PDF_TOC_Generater
-
-# 安装依赖
-conda create -n pdf-toc python=3.11
-conda activate pdf-toc
-pip install -r requirements.txt
-
-# 配置 API
-cp .env.example .env
-# 编辑 .env 填入 OpenRouter API Key
+python main.py --pdf book.pdf --range 5-12 --offset 10
 ```
 
-### 使用
+**文本导入**
+```bash
+python main.py --from-txt toc.txt --pdf book.pdf
+```
 
-#### 交互式模式
+**交互式模式**
 ```bash
 python main.py
 ```
 
-#### 命令行模式
-```bash
-# OCR 识别
-python main.py --pdf book.pdf --range 8-10 --offset 11
+## 📖 常见问题
 
-# 文本导入
-python main.py --from-txt toc.txt --pdf book.pdf --output output.pdf
-```
+### 页码偏置如何设置？
 
-## 文档
+**页码偏置** = 书籍第1页对应的PDF文件页码
 
-- [安装指南](docs/installation.md)
-- [使用教程](docs/usage.md)
-- [配置说明](docs/configuration.md)
-- [API 文档](docs/api.md)
-- [架构设计](ARCHITECTURE.md)
+例如：
+- PDF 第10页是书籍第1页 → 偏置 = 10
+- PDF 第15页是书籍第1页 → 偏置 = 15
 
-## 工作流程
+### 书籍页码可以是负数吗？
 
-```
-1. 提取目录页 → 2. OCR 识别 → 3. 合并数据 → 4. 写入 PDF
-```
+可以！书籍页码可以是负数（用于摘要、前言等在正文之前的内容），但生成的 PDF 页码必须 ≥ 1。
 
-或
+### 如何使用结构化编辑器？
 
-```
-准备 toc.txt → 解析文本 → 写入 PDF
-```
+1. 在编辑页面点击"结构化编辑"标签
+2. 直接在表格中编辑标题、层级、页码
+3. 修改书籍页码会自动计算 PDF 页码（反之亦然）
+4. 条目会自动按 PDF 页码排序
+5. 支持撤销/重做 (Ctrl+Z / Ctrl+Y)
 
-## 示例
+### 如何查看历史任务？
 
-详见 `examples/` 目录。
+点击顶部"查看历史"按钮，可以：
+- 查看所有处理过的任务
+- 按状态过滤任务
+- 重新编辑历史任务
+- 删除不需要的任务
 
-## 许可证
+## 🤝 获取帮助
 
-MIT License
+- 查看 [使用教程](usage.md) 了解详细步骤
+- 提交 [Issue](https://github.com/Gonghysin/PDF_TOC_Generater/issues) 报告问题
+- 阅读 [API 文档](api.md) 了解接口详情
+- 参考 [架构设计](architecture.md) 了解技术细节
 
-## 贡献
+## 📝 文档贡献
 
-欢迎提交 Issue 和 Pull Request。
+发现文档问题或有改进建议？欢迎提交 Pull Request！
+
+文档使用 Markdown 编写，位于 `docs/` 目录。
