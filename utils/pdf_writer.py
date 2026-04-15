@@ -38,7 +38,6 @@ def create_pdf_outline(
         (1, '第一章 绪论', 15)
     """
     outline = []
-    offset = merged.metadata.page_offset if apply_offset else 1
     filtered_count = 0
     fixed_count = 0
     
@@ -49,8 +48,8 @@ def create_pdf_outline(
             logger.warning(f"跳过负数页码条目: {entry.title} (page={entry.page})")
             continue
         
-        # 计算 PDF 实际页码
-        pdf_page = entry.apply_offset(offset)
+        # entry.page 已经是 PDF 页码（在 merge_toc_pages 时已经转换过）
+        pdf_page = entry.page
         
         # 验证应用偏移后的页码是否有效
         if pdf_page < 1:

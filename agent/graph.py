@@ -481,11 +481,6 @@ def create_ocr_workflow(llm_client) -> StateGraph:
     Returns:
         StateGraph: 编译后的工作流图
         
-    Examples:
-        >>> from agent.ocr_agent import get_llm_client
-        >>> client = get_llm_client()
-        >>> workflow = create_ocr_workflow(client)
-        >>> result = workflow.invoke(initial_state)
     """
     # 创建状态图
     workflow = StateGraph(OCRState)

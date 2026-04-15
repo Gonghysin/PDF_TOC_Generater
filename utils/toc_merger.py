@@ -355,8 +355,9 @@ def export_toc_to_text(merged: MergedTOC, output_path: str) -> None:
         
         for entry in merged.toc:
             indent = "  " * (entry.level - 1)
-            pdf_page = entry.apply_offset(merged.metadata.page_offset)
-            f.write(f"{indent}{entry.title} ... {entry.page} (PDF: {pdf_page})\n")
+            # entry.page 已经是 PDF 页码，需要反推书籍页码用于显示
+            book_page = entry.page - (merged.metadata.page_offset - 1)
+            f.write(f"{indent}{entry.title} ... {book_page} (PDF: {entry.page})\n")
     
     logger.info(f"✓ 已导出文本格式目录到: {output_path}")
 
@@ -416,12 +417,13 @@ def parse_toc_from_text(text_content: str) -> tuple[List[TOCEntry], Dict[str, An
         if in_toc_content and line_stripped:
             # 匹配格式: "  标题 ... 页码 (PDF: 实际页码)"
             # 或者: "标题 ... 页码 (PDF: 实际页码)"
-            match = re.match(r'^(\s*)(.+?)\s+\.\.\.\s+(\d+)\s+\(PDF:\s+\d+\)', line_stripped)
-            
+            # 注意：我们需要提取 PDF 页码（括号内的数字），而不是书籍页码
+            match = re.match(r'^(\s*)(.+?)\s+\.\.\.\s+\d+\s+\(PDF:\s+(\d+)\)', line_stripped)
+
             if match:
                 indent = match.group(1)
                 title = match.group(2).strip()
-                page = int(match.group(3))
+                page = int(match.group(3))  # 提取 PDF 页码
                 
                 # 计算层级（每2个空格为1级）
                 level = len(indent) // 2 + 1
